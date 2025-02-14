@@ -119,3 +119,34 @@ function ielts_save_question() {
     exit;
 }
 add_action('admin_post_ielts_save_question', 'ielts_save_question');
+
+// Shortcode for displaying questions on client side
+function ielts_display_questions() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'ielts_questions';
+    $questions = $wpdb->get_results("SELECT * FROM $table_name");
+    
+    ob_start();
+    ?>
+    <div class="container mt-4">
+        <?php foreach ($questions as $question) : ?>
+            <div class="row border p-4 mb-3">
+                <div class="col-md-8">
+                    <p><?php echo esc_html($question->description); ?></p>
+                </div>
+                <div class="col-md-4">
+                    <h4><?php echo esc_html($question->question); ?></h4>
+                    <ul class="list-group">
+                        <li class="list-group-item">A. <?php echo esc_html($question->option_a); ?></li>
+                        <li class="list-group-item">B. <?php echo esc_html($question->option_b); ?></li>
+                        <li class="list-group-item">C. <?php echo esc_html($question->option_c); ?></li>
+                        <li class="list-group-item">D. <?php echo esc_html($question->option_d); ?></li>
+                    </ul>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('ielts_questions', 'ielts_display_questions');
