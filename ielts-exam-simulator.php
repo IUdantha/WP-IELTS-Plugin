@@ -118,7 +118,7 @@ function ielts_add_questions_page() {
         
         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
             <input type="hidden" name="action" value="ielts_save_question">
-            <input type="hidden" name="description_id" value="<?php echo $description_id; ?>">
+            <input type="hidden" name="description_id" value="1">
             <table class="form-table">
                 <tr>
                     <th><label for="question">Question:</label></th>
@@ -185,9 +185,8 @@ function ielts_save_question() {
 }
 add_action('admin_post_ielts_save_question', 'ielts_save_question');
 
-
-// Shortcode for displaying IELTS passages with related MCQs
-function ielts_display_questions() {
+// Shortcode for displaying IELTS passages with rotating MCQs
+function ielts_display_rotating_questions() {
     global $wpdb;
     $description_table = $wpdb->prefix . 'ielts_descriptions';
     $questions_table = $wpdb->prefix . 'ielts_questions';
@@ -196,52 +195,53 @@ function ielts_display_questions() {
     ob_start();
     ?>
     <div class="container mt-4">
-        <form id="ielts_quiz_form">
-            <?php foreach ($descriptions as $description) : ?>
-                <div class="row border p-4 mb-3">
-                    <div class="col-md-12">
-                        <h4>Passage</h4>
-                        <p><?php echo esc_html($description->description); ?></p>
-                    </div>
-                    <?php 
-                    $questions = $wpdb->get_results($wpdb->prepare("SELECT * FROM $questions_table WHERE description_id = %d", $description->id));
-                    foreach ($questions as $question) : ?>
-                        <div class="col-md-8">
-                            <h5><?php echo esc_html($question->question); ?></h5>
-                        </div>
-                        <div class="col-md-4">
-                            <ul class="list-group">
-                                <li class="list-group-item"><input type="radio" name="answer_<?php echo $question->id; ?>" value="A"> A. <?php echo esc_html($question->option_a); ?></li>
-                                <li class="list-group-item"><input type="radio" name="answer_<?php echo $question->id; ?>" value="B"> B. <?php echo esc_html($question->option_b); ?></li>
-                                <li class="list-group-item"><input type="radio" name="answer_<?php echo $question->id; ?>" value="C"> C. <?php echo esc_html($question->option_c); ?></li>
-                                <li class="list-group-item"><input type="radio" name="answer_<?php echo $question->id; ?>" value="D"> D. <?php echo esc_html($question->option_d); ?></li>
-                            </ul>
-                        </div>
-                    <?php endforeach; ?>
+        <?php foreach ($descriptions as $description) : ?>
+            <div class="row border p-4 mb-3">
+                <div class="col-md-12">
+                    <h4>Passage</h4>
+                    <p><?php echo esc_html($description->description); ?></p>
                 </div>
-            <?php endforeach; ?>
-            <button type="button" class="btn btn-primary" onclick="submitQuiz()">Submit</button>
-        </form>
-        <div id="quiz_result" class="mt-3"></div>
-    </div>
-    <script>
-        function submitQuiz() {
-            let score = 0;
-            let totalQuestions = document.querySelectorAll('input[type=radio]:checked').length;
-            <?php foreach ($descriptions as $description) : ?>
                 <?php 
                 $questions = $wpdb->get_results($wpdb->prepare("SELECT * FROM $questions_table WHERE description_id = %d", $description->id));
-                foreach ($questions as $question) : ?>
-                    let selectedAnswer = document.querySelector('input[name="answer_<?php echo $question->id; ?>"]:checked');
-                    if (selectedAnswer && selectedAnswer.value === "<?php echo esc_html($question->correct_answer); ?>") {
-                        score++;
-                    }
-                <?php endforeach; ?>
-            <?php endforeach; ?>
-            document.getElementById('quiz_result').innerHTML = `<h4>Your Score: ${score} / ${totalQuestions}</h4>`;
+                if (!empty($questions)) : ?>
+                    <div class="col-md-12">
+                        <div class="question-container" id="question_container_<?php echo $description->id; ?>">
+                            <?php foreach ($questions as $index => $question) : ?>
+                                <div class="question-block question_<?php echo $description->id; ?>" style="display: <?php echo ($index === 0) ? 'block' : 'none'; ?>;">
+                                    <h5><?php echo esc_html($question->question); ?></h5>
+                                    <ul class="list-group">
+                                        <li class="list-group-item"><input type="radio" name="answer_<?php echo $question->id; ?>" value="A"> A. <?php echo esc_html($question->option_a); ?></li>
+                                        <li class="list-group-item"><input type="radio" name="answer_<?php echo $question->id; ?>" value="B"> B. <?php echo esc_html($question->option_b); ?></li>
+                                        <li class="list-group-item"><input type="radio" name="answer_<?php echo $question->id; ?>" value="C"> C. <?php echo esc_html($question->option_c); ?></li>
+                                        <li class="list-group-item"><input type="radio" name="answer_<?php echo $question->id; ?>" value="D"> D. <?php echo esc_html($question->option_d); ?></li>
+                                    </ul>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <button type="button" class="btn btn-secondary mt-3" onclick="showNextQuestion(<?php echo $description->id; ?>)">Next Question</button>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endforeach; ?>
+    </div>
+
+    <script>
+        function showNextQuestion(descId) {
+            let questions = document.querySelectorAll('.question_' + descId);
+            let currentIndex = -1;
+
+            questions.forEach((q, index) => {
+                if (q.style.display === 'block') {
+                    currentIndex = index;
+                    q.style.display = 'none';
+                }
+            });
+
+            let nextIndex = (currentIndex + 1) % questions.length;
+            questions[nextIndex].style.display = 'block';
         }
     </script>
     <?php
     return ob_get_clean();
 }
-add_shortcode('ielts_questions', 'ielts_display_questions');
+add_shortcode('ielts_questions', 'ielts_display_rotating_questions');
