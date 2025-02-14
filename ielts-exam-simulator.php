@@ -10,11 +10,14 @@ if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly.
 }
 
+require_once plugin_dir_path(__FILE__) . 'shortcode.php';
+
 // Activation Hook to Create Database Table
 function ielts_create_table() {
     global $wpdb;
     $description_table = $wpdb->prefix . 'ielts_descriptions';
     $questions_table = $wpdb->prefix . 'ielts_questions';
+    $results_table = $wpdb->prefix . 'ielts_results';
     $charset_collate = $wpdb->get_charset_collate();
 
     $sql1 = "CREATE TABLE $description_table (
@@ -36,9 +39,19 @@ function ielts_create_table() {
         FOREIGN KEY (description_id) REFERENCES $description_table(id) ON DELETE CASCADE
     ) $charset_collate;";
 
+    $sql3 = "CREATE TABLE $results_table (
+        id INT NOT NULL AUTO_INCREMENT,
+        user_id INT NOT NULL,
+        score INT NOT NULL,
+        total_questions INT NOT NULL,
+        test_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id)
+    ) $charset_collate;";
+
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta($sql1);
     dbDelta($sql2);
+    dbDelta($sql3);
 }
 register_activation_hook(__FILE__, 'ielts_create_table');
 
@@ -185,63 +198,3 @@ function ielts_save_question() {
 }
 add_action('admin_post_ielts_save_question', 'ielts_save_question');
 
-// Shortcode for displaying IELTS passages with rotating MCQs
-function ielts_display_rotating_questions() {
-    global $wpdb;
-    $description_table = $wpdb->prefix . 'ielts_descriptions';
-    $questions_table = $wpdb->prefix . 'ielts_questions';
-    $descriptions = $wpdb->get_results("SELECT * FROM $description_table");
-
-    ob_start();
-    ?>
-    <div class="container mt-4">
-        <?php foreach ($descriptions as $description) : ?>
-            <div class="row border p-4 mb-3">
-                <div class="col-md-12">
-                    <h4>Passage</h4>
-                    <p><?php echo esc_html($description->description); ?></p>
-                </div>
-                <?php 
-                $questions = $wpdb->get_results($wpdb->prepare("SELECT * FROM $questions_table WHERE description_id = %d", $description->id));
-                if (!empty($questions)) : ?>
-                    <div class="col-md-12">
-                        <div class="question-container" id="question_container_<?php echo $description->id; ?>">
-                            <?php foreach ($questions as $index => $question) : ?>
-                                <div class="question-block question_<?php echo $description->id; ?>" style="display: <?php echo ($index === 0) ? 'block' : 'none'; ?>;">
-                                    <h5><?php echo esc_html($question->question); ?></h5>
-                                    <ul class="list-group">
-                                        <li class="list-group-item"><input type="radio" name="answer_<?php echo $question->id; ?>" value="A"> A. <?php echo esc_html($question->option_a); ?></li>
-                                        <li class="list-group-item"><input type="radio" name="answer_<?php echo $question->id; ?>" value="B"> B. <?php echo esc_html($question->option_b); ?></li>
-                                        <li class="list-group-item"><input type="radio" name="answer_<?php echo $question->id; ?>" value="C"> C. <?php echo esc_html($question->option_c); ?></li>
-                                        <li class="list-group-item"><input type="radio" name="answer_<?php echo $question->id; ?>" value="D"> D. <?php echo esc_html($question->option_d); ?></li>
-                                    </ul>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                        <button type="button" class="btn btn-secondary mt-3" onclick="showNextQuestion(<?php echo $description->id; ?>)">Next Question</button>
-                    </div>
-                <?php endif; ?>
-            </div>
-        <?php endforeach; ?>
-    </div>
-
-    <script>
-        function showNextQuestion(descId) {
-            let questions = document.querySelectorAll('.question_' + descId);
-            let currentIndex = -1;
-
-            questions.forEach((q, index) => {
-                if (q.style.display === 'block') {
-                    currentIndex = index;
-                    q.style.display = 'none';
-                }
-            });
-
-            let nextIndex = (currentIndex + 1) % questions.length;
-            questions[nextIndex].style.display = 'block';
-        }
-    </script>
-    <?php
-    return ob_get_clean();
-}
-add_shortcode('ielts_questions', 'ielts_display_rotating_questions');
