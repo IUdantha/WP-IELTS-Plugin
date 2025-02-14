@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: IELTS Exam Simulator
- * Description: A plugin to simulate the IELTS exam with MCQ questions.
+ * Description: A plugin to simulate the IELTS exam with MCQ questions under a common description.
  * Version: 1.0
  * Author: Your Name
  */
@@ -13,23 +13,32 @@ if (!defined('ABSPATH')) {
 // Activation Hook to Create Database Table
 function ielts_create_table() {
     global $wpdb;
-    $table_name = $wpdb->prefix . 'ielts_questions';
+    $description_table = $wpdb->prefix . 'ielts_descriptions';
+    $questions_table = $wpdb->prefix . 'ielts_questions';
     $charset_collate = $wpdb->get_charset_collate();
 
-    $sql = "CREATE TABLE $table_name (
+    $sql1 = "CREATE TABLE $description_table (
         id INT NOT NULL AUTO_INCREMENT,
+        description TEXT NOT NULL,
+        PRIMARY KEY (id)
+    ) $charset_collate;";
+
+    $sql2 = "CREATE TABLE $questions_table (
+        id INT NOT NULL AUTO_INCREMENT,
+        description_id INT NOT NULL,
         question TEXT NOT NULL,
         option_a TEXT NOT NULL,
         option_b TEXT NOT NULL,
         option_c TEXT NOT NULL,
         option_d TEXT NOT NULL,
         correct_answer VARCHAR(10) NOT NULL,
-        description TEXT NOT NULL,
-        PRIMARY KEY (id)
+        PRIMARY KEY (id),
+        FOREIGN KEY (description_id) REFERENCES $description_table(id) ON DELETE CASCADE
     ) $charset_collate;";
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-    dbDelta($sql);
+    dbDelta($sql1);
+    dbDelta($sql2);
 }
 register_activation_hook(__FILE__, 'ielts_create_table');
 
@@ -49,11 +58,67 @@ add_action('admin_menu', 'ielts_add_admin_menu');
 
 // Admin Page Content
 function ielts_admin_page() {
+    global $wpdb;
+    $description_table = $wpdb->prefix . 'ielts_descriptions';
     ?>
     <div class="wrap">
-        <h1>IELTS Exam Simulator</h1>
+        <h1>IELTS Exam Simulator - Admin Panel</h1>
+        <p>Add descriptions and their related MCQs here.</p>
+        
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <input type="hidden" name="action" value="ielts_save_description">
+            <table class="form-table">
+                <tr>
+                    <th><label for="description">Passage (Description):</label></th>
+                    <td><textarea name="description" required class="large-text"></textarea></td>
+                </tr>
+            </table>
+            <p><input type="submit" class="button-primary" value="Save Passage"></p>
+        </form>
+
+        <h2>Existing Passages</h2>
+        <ul>
+            <?php 
+            $descriptions = $wpdb->get_results("SELECT * FROM $description_table");
+            foreach ($descriptions as $description) : ?>
+                <li>
+                    <strong><?php echo esc_html($description->description); ?></strong> 
+                    <a href="admin.php?page=ielts-add-questions&desc_id=<?php echo $description->id; ?>">(Add Questions)</a>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    </div>
+    <?php
+}
+
+// Save Passage (Description)
+function ielts_save_description() {
+    global $wpdb;
+    $description_table = $wpdb->prefix . 'ielts_descriptions';
+    
+    if (isset($_POST['description'])) {
+        $wpdb->insert(
+            $description_table,
+            [ 'description' => sanitize_textarea_field($_POST['description']) ]
+        );
+    }
+    wp_redirect(admin_url('admin.php?page=ielts-exam&success=1'));
+    exit;
+}
+add_action('admin_post_ielts_save_description', 'ielts_save_description');
+
+// Page to Add Questions
+function ielts_add_questions_page() {
+    global $wpdb;
+    $questions_table = $wpdb->prefix . 'ielts_questions';
+    $description_id = intval($_GET['desc_id']);
+    ?>
+    <div class="wrap">
+        <h1>Add Questions</h1>
+        
         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
             <input type="hidden" name="action" value="ielts_save_question">
+            <input type="hidden" name="description_id" value="<?php echo $description_id; ?>">
             <table class="form-table">
                 <tr>
                     <th><label for="question">Question:</label></th>
@@ -86,67 +151,36 @@ function ielts_admin_page() {
                         </select>
                     </td>
                 </tr>
-                <tr>
-                    <th><label for="description">Description:</label></th>
-                    <td><textarea name="description" required class="large-text"></textarea></td>
-                </tr>
             </table>
             <p><input type="submit" class="button-primary" value="Save Question"></p>
         </form>
     </div>
     <?php
 }
+add_action('admin_menu', function() {
+    add_submenu_page('ielts-exam', 'Add Questions', 'Add Questions', 'manage_options', 'ielts-add-questions', 'ielts_add_questions_page');
+});
 
-// Handle Form Submission
+// Save Questions
 function ielts_save_question() {
     global $wpdb;
-    $table_name = $wpdb->prefix . 'ielts_questions';
-
-    $wpdb->insert(
-        $table_name,
-        [
-            'question' => sanitize_text_field($_POST['question']),
-            'option_a' => sanitize_text_field($_POST['option_a']),
-            'option_b' => sanitize_text_field($_POST['option_b']),
-            'option_c' => sanitize_text_field($_POST['option_c']),
-            'option_d' => sanitize_text_field($_POST['option_d']),
-            'correct_answer' => sanitize_text_field($_POST['correct_answer']),
-            'description' => sanitize_textarea_field($_POST['description']),
-        ]
-    );
-
-    wp_redirect(admin_url('admin.php?page=ielts-exam&success=1'));
+    $questions_table = $wpdb->prefix . 'ielts_questions';
+    
+    if (isset($_POST['description_id'], $_POST['question'], $_POST['correct_answer'])) {
+        $wpdb->insert(
+            $questions_table,
+            [
+                'description_id' => intval($_POST['description_id']),
+                'question' => sanitize_text_field($_POST['question']),
+                'option_a' => sanitize_text_field($_POST['option_a']),
+                'option_b' => sanitize_text_field($_POST['option_b']),
+                'option_c' => sanitize_text_field($_POST['option_c']),
+                'option_d' => sanitize_text_field($_POST['option_d']),
+                'correct_answer' => sanitize_text_field($_POST['correct_answer']),
+            ]
+        );
+    }
+    wp_redirect(admin_url('admin.php?page=ielts-add-questions&desc_id=' . $_POST['description_id'] . '&success=1'));
     exit;
 }
 add_action('admin_post_ielts_save_question', 'ielts_save_question');
-
-// Shortcode for displaying questions on client side
-function ielts_display_questions() {
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'ielts_questions';
-    $questions = $wpdb->get_results("SELECT * FROM $table_name");
-    
-    ob_start();
-    ?>
-    <div class="container mt-4">
-        <?php foreach ($questions as $question) : ?>
-            <div class="row border p-4 mb-3">
-                <div class="col-md-8">
-                    <p><?php echo esc_html($question->description); ?></p>
-                </div>
-                <div class="col-md-4">
-                    <h4><?php echo esc_html($question->question); ?></h4>
-                    <ul class="list-group">
-                        <li class="list-group-item">A. <?php echo esc_html($question->option_a); ?></li>
-                        <li class="list-group-item">B. <?php echo esc_html($question->option_b); ?></li>
-                        <li class="list-group-item">C. <?php echo esc_html($question->option_c); ?></li>
-                        <li class="list-group-item">D. <?php echo esc_html($question->option_d); ?></li>
-                    </ul>
-                </div>
-            </div>
-        <?php endforeach; ?>
-    </div>
-    <?php
-    return ob_get_clean();
-}
-add_shortcode('ielts_questions', 'ielts_display_questions');
